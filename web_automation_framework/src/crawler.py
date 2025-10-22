@@ -2,9 +2,10 @@ import asyncio
 from playwright.async_api import Page
 from typing import Set, List, Dict, Tuple, AsyncGenerator
 from urllib.parse import urljoin, urlparse
+from aoda.scanner import run_aoda_scan
 
 class Crawler:
-    def __init__(self, seed_url: str, max_depth: int = 2, username: str = None, password: str = None):
+    def __init__(self, seed_url: str, max_depth: int = 2, username: str = None, password: str = None, aoda_scan: bool = False):
         self.seed_url = seed_url
         self.domain = urlparse(seed_url).netloc
         self.urls_to_visit: List[Tuple[str, int]] = [(seed_url, 0)]
@@ -12,6 +13,8 @@ class Crawler:
         self.max_depth = max_depth
         self.username = username
         self.password = password
+        self.aoda_scan = aoda_scan
+        self.aoda_results = []
 
     async def _handle_login(self, page: Page):
         """
@@ -50,6 +53,12 @@ class Crawler:
 
                 if "login.microsoftonline.com" in page.url:
                     await self._handle_login(page)
+
+                if self.aoda_scan:
+                    print(f"Running AODA scan on: {page.url}")
+                    results = await run_aoda_scan(page)
+                    if results:
+                        self.aoda_results.append({"url": page.url, "results": results})
 
                 self.visited_urls.add(url)
                 yield page
