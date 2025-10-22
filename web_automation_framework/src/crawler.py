@@ -4,12 +4,38 @@ from typing import Set, List, Dict, Tuple, AsyncGenerator
 from urllib.parse import urljoin, urlparse
 
 class Crawler:
-    def __init__(self, seed_url: str, max_depth: int = 2):
+    def __init__(self, seed_url: str, max_depth: int = 2, username: str = None, password: str = None):
         self.seed_url = seed_url
         self.domain = urlparse(seed_url).netloc
         self.urls_to_visit: List[Tuple[str, int]] = [(seed_url, 0)]
         self.visited_urls: Set[str] = set()
         self.max_depth = max_depth
+        self.username = username
+        self.password = password
+
+    async def _handle_login(self, page: Page):
+        """
+        Handles the login process for Azure Entra ID.
+        """
+        print("Login page detected. Handling login...")
+        try:
+            # Fill in the username
+            await page.fill('input[name="loginfmt"]', self.username)
+            await page.click('input[type="submit"]')
+
+            # Wait for the password field to be visible
+            await page.wait_for_selector('input[name="passwd"]')
+
+            # Fill in the password
+            await page.fill('input[name="passwd"]', self.password)
+            await page.click('input[type="submit"]')
+
+            # Wait for navigation after login
+            await page.wait_for_navigation()
+            print("Login successful.")
+
+        except Exception as e:
+            print(f"Failed to login: {e}")
 
     async def crawl(self, page: Page) -> AsyncGenerator[Page, None]:
         while self.urls_to_visit:
@@ -21,6 +47,10 @@ class Crawler:
             print(f"Crawling: {url} at depth {depth}")
             try:
                 await page.goto(url)
+
+                if "login.microsoftonline.com" in page.url:
+                    await self._handle_login(page)
+
                 self.visited_urls.add(url)
                 yield page
             except Exception as e:

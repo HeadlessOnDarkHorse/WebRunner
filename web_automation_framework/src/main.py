@@ -1,6 +1,8 @@
 import asyncio
 import argparse
 import json
+import os
+import sys
 from playwright.async_api import async_playwright, Page
 from typing import List, Dict
 from crawler import Crawler
@@ -66,13 +68,20 @@ def display_crawl_summary(visited_urls: List[str], repository: ObjectRepository)
     print("--- End of Summary ---")
 
 async def main(seed_url: str, max_depth: int):
+    azure_username = os.environ.get("AZURE_USERNAME")
+    azure_password = os.environ.get("AZURE_PASSWORD")
+
+    if not azure_username or not azure_password:
+        print("Error: AZURE_USERNAME and AZURE_PASSWORD environment variables must be set.")
+        sys.exit(1)
+
     repository = ObjectRepository()
     visited_urls = []
     async with async_playwright() as p:
         browser = await p.chromium.launch()
         page = await browser.new_page()
 
-        crawler = Crawler(seed_url, max_depth)
+        crawler = Crawler(seed_url, max_depth, azure_username, azure_password)
         async for crawled_page in crawler.crawl(page):
             print(f"Enumerating objects on: {crawled_page.url}")
             objects = await enumerate_objects(crawled_page)
