@@ -18,7 +18,7 @@ class ObjectRepository:
                 "text": obj["text"],
                 "roles": set([obj["role"]]),
                 "pages": set([page_url]),
-                "assertions": {}
+                "assertions": []
             }
         else:
             self.objects[key]["pages"].add(page_url)

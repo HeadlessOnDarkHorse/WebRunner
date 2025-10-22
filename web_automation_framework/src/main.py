@@ -24,20 +24,18 @@ async def enumerate_objects(page: Page) -> List[Dict]:
 
     return objects
 
-def prompt_for_assertions(repository: ObjectRepository):
+def apply_assertions_from_config(repository: ObjectRepository, config_path: str = "assertion_config.json"):
     """
-    Prompts the user for assertions for each object in the repository.
+    Applies assertions to the repository based on a configuration file.
     """
-    print("\\n--- Add Assertions ---")
-    print("For each object, you will be asked if you want to add a visibility assertion.")
-    print("In a real environment, you would be prompted for input (y/n).")
-    print("For this demonstration, we will automatically add a visibility assertion to each object.")
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+
+    default_assertions = config.get("default_assertions", [])
 
     for key, obj in repository.objects.items():
-        print(f"Object: {obj['tag']}(name='{obj['name']}', text='{obj['text']}')")
-        obj['assertions']['visible'] = True
+        obj['assertions'] = default_assertions
 
-    print("\\n--- Assertions Complete ---")
     return repository
 
 async def main(seed_url: str, max_depth: int):
@@ -55,7 +53,7 @@ async def main(seed_url: str, max_depth: int):
 
         await browser.close()
 
-    repository = prompt_for_assertions(repository)
+    repository = apply_assertions_from_config(repository)
     repository.save()
 
 if __name__ == "__main__":
