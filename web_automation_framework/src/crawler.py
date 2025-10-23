@@ -15,6 +15,15 @@ class Crawler:
         self.password = password
         self.aoda_scan = aoda_scan
         self.aoda_results = []
+        self.interacted_elements = {}
+
+    async def _get_element_identifier(self, element):
+        """
+        Creates a unique identifier for a Playwright element.
+        """
+        tag = await element.evaluate('e => e.tagName')
+        text = await element.text_content()
+        return f"{tag.lower()}:{text.strip()}"
 
     async def _handle_login(self, page: Page):
         """
@@ -40,6 +49,30 @@ class Crawler:
         except Exception as e:
             print(f"Failed to login: {e}")
 
+    async def _scan_and_discover(self, page: Page, depth: int):
+        """
+        Helper method to run scans and discover new interactions.
+        """
+        if self.aoda_scan:
+            print(f"  - Running AODA scan...")
+            results = await run_aoda_scan(page)
+            if results and results.get("violations"):
+                self.aoda_results.append({"url": page.url, "results": results})
+
+        yield page
+
+        if depth < self.max_depth:
+            print(f"  - Discovering interactions...")
+            new_urls, new_page_states = await self.discover_and_interact(page)
+            for new_url in new_urls:
+                if new_url not in self.visited_urls:
+                    self.urls_to_visit.append((new_url, depth + 1))
+
+            for new_page_state in new_page_states:
+                print(f"  - New page state detected on: {new_page_state.url}")
+                async for p in self._scan_and_discover(new_page_state, depth):
+                    yield p
+
     async def crawl(self, page: Page) -> AsyncGenerator[Page, None]:
         while self.urls_to_visit:
             url, depth = self.urls_to_visit.pop(0)
@@ -47,58 +80,50 @@ class Crawler:
             if url in self.visited_urls or depth >= self.max_depth:
                 continue
 
-            print(f"Crawling: {url} at depth {depth}")
+            self.visited_urls.add(url)
+            print(f"Crawling: {url} (Depth: {depth})")
+
             try:
                 await page.goto(url)
 
                 if "login.microsoftonline.com" in page.url:
                     await self._handle_login(page)
 
-                if self.aoda_scan:
-                    print(f"Running AODA scan on: {page.url}")
-                    results = await run_aoda_scan(page)
-                    if results:
-                        self.aoda_results.append({"url": page.url, "results": results})
+                async for p in self._scan_and_discover(page, depth):
+                    yield p
 
-                self.visited_urls.add(url)
-                yield page
             except Exception as e:
-                print(f"Failed to crawl {url}: {e}")
+                print(f"  - Failed to process page {url}: {e}")
+
+    async def discover_and_interact(self, page: Page) -> Tuple[List[str], List[Page]]:
+        discovered_urls = []
+        new_page_states = []
+
+        clickable_elements = await page.query_selector_all(
+            "a[href], button, [role='button'], [role='link'], [role='tab']"
+        )
+
+        page_url = page.url
+        if page_url not in self.interacted_elements:
+            self.interacted_elements[page_url] = set()
+
+        for element in clickable_elements:
+            element_id = await self._get_element_identifier(element)
+            if element_id in self.interacted_elements[page_url]:
                 continue
 
-            if depth < self.max_depth:
-                new_urls = await self.discover_and_interact(page)
-                for new_url in new_urls:
-                    if new_url not in self.visited_urls:
-                        self.urls_to_visit.append((new_url, depth + 1))
-
-    async def discover_and_interact(self, page: Page, max_interactions: int = 10) -> List[str]:
-        discovered_urls = []
-
-        # Discover and process links
-        links = await page.query_selector_all("a")
-        for i, link in enumerate(links):
-            if len(discovered_urls) >= max_interactions:
-                break
-            href = await link.get_attribute("href")
-            if href:
-                full_url = urljoin(page.url, href)
-                if urlparse(full_url).netloc == self.domain:
-                    discovered_urls.append(full_url)
-
-        # Discover and process buttons
-        buttons = await page.query_selector_all("button")
-        for i, button in enumerate(buttons):
-            if len(discovered_urls) >= max_interactions:
-                break
+            current_url = page.url
             try:
-                async with page.expect_navigation():
-                    await button.click()
-                new_url = page.url
-                if urlparse(new_url).netloc == self.domain:
-                    discovered_urls.append(new_url)
-            except Exception as e:
-                # This button click did not result in a navigation.
-                pass
+                await element.click()
+                self.interacted_elements[page_url].add(element_id)
 
-        return discovered_urls
+                if page.url != current_url:
+                    if urlparse(page.url).netloc == self.domain:
+                        discovered_urls.append(page.url)
+                else:
+                    new_page_states.append(page)
+
+            except Exception as e:
+                print(f"    - Failed to click element: {element_id}. Reason: {e}")
+
+        return discovered_urls, new_page_states

@@ -24,6 +24,11 @@ class ObjectRepository:
             self.objects[key]["pages"].add(page_url)
             self.objects[key]["roles"].add(obj["role"])
 
+    def add_objects(self, objects: List[Dict], page_url: str):
+        """Adds a list of objects to the repository."""
+        for obj in objects:
+            self.add_object(obj, page_url)
+
     def save(self):
         """Saves the object repository to a JSON file."""
         # Convert sets to lists for JSON serialization

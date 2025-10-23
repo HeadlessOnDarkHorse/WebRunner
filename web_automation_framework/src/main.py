@@ -112,11 +112,11 @@ async def main(seed_url: str, max_depth: int, aoda_scan: bool = False):
         page = await browser.new_page()
 
         crawler = Crawler(seed_url, max_depth, azure_username, azure_password, aoda_scan)
+        # The crawl method now handles all scanning logic internally.
+        # We just need to iterate through it to completion.
         async for crawled_page in crawler.crawl(page):
-            print(f"Enumerating objects on: {crawled_page.url}")
             objects = await enumerate_objects(crawled_page)
-            for obj in objects:
-                repository.add_object(obj, crawled_page.url)
+            repository.add_objects(objects, crawled_page.url)
 
         visited_urls = list(crawler.visited_urls)
         aoda_results = crawler.aoda_results
